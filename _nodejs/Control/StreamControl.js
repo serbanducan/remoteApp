@@ -28,7 +28,7 @@ function identifyStreamScreen(data) {
         isClientReady = true;
 
         // Trimitem portul activ curent înapoi către client
-        const activePort = require('./websocket').getDynamicPort();
+        const activePort = require('../server/websocket').getDynamicPort();
         sendMessage({
             component: 'STREAM',
             action: 'CONFIG',

@@ -35,8 +35,8 @@ function wordArrayToUint8Array(wordArray) {
 /**
  * Descarcă un fișier criptat AES-CTR și îl decriptează iterativ folosind Streams.
  */
-export async function startHttpDownload(serverIp, token, fileName, onProgress) {
-    const downloadUrl = `http://${serverIp}:8082/download?token=${token}`;
+export async function startHttpDownload(serverIp, port, token, fileName, onProgress) {
+    const downloadUrl = `http://${serverIp}:${port}/download?token=${token}`;
     
     // Faza 1: Descărcarea Oarbă în fișier temporar
     const tempFile = new File(Paths.document, fileName + '.enc');

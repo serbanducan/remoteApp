@@ -57,17 +57,21 @@ function setAuthenticatedClient(ws) {
 
 function sendStream(frameBuffer) {
     if (streamSocket && streamSocket.readyState === 1) {
-        if (!streamKey) return;
+        if (!streamKey) {
+            return;
+        }
 
         try {
             // Generăm un IV aleator de 16 bytes
             const iv = crypto.randomBytes(16);
             
-            // Criptăm imaginea nativ folosind AES-256-CTR
+            // Creăm obiectul Cipher (AES-256-CTR) - NOTĂ: Parola trebuie convertită în cheie sigură
+            // Pentru simplificare, aici folosim un hash SHA-256 peste parola salvată pe server
             const cipher = crypto.createCipheriv('aes-256-ctr', streamKey, iv);
+            
             const encryptedFrame = Buffer.concat([cipher.update(frameBuffer), cipher.final()]);
             
-            // Îmbinăm [IV 16 bytes] + [Buffer criptat] și îl trimitem binar pe rețea
+            // Trimitem pachetul binar format din IV (16 octeți) + Cadrul Criptat
             const finalPacket = Buffer.concat([iv, encryptedFrame]);
             
             streamSocket.send(finalPacket);

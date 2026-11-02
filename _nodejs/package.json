@@ -19,7 +19,7 @@
     "node-cmd": "^5.0.0",
     "node-global-key-listener": "^0.3.0",
     "open": "^8.4.2",
-    "robotjs": "^0.6.0",
+    "robotjs": "npm:@hurdlegroup/robotjs@^0.12.3",
     "screenshot-desktop": "^1.15.0",
     "systeminformation": "^5.23.5",
     "undici-types": "^5.26.5",
@@ -28,6 +28,8 @@
   },
   "scripts": {
     "start": "electron .",
+    "rebuild": "electron-rebuild",
+    "postinstall": "electron-rebuild",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

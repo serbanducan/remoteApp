@@ -15,6 +15,8 @@ function identifyFileScreen(data){
 
 function requestDownload(filePath) {
     try {
+        const { getFileServerPort } = require('../../server/FileServer');
+        
         // Generăm token-ul de descărcare temporară
         const token = TokenManager.generateToken(filePath);
         const fileName = path.basename(filePath);
@@ -23,7 +25,8 @@ function requestDownload(filePath) {
             component: 'FILE_DOWNLOAD',
             action: 'FORCE_DOWNLOAD',
             token: token,
-            fileName: fileName
+            fileName: fileName,
+            port: getFileServerPort()
         };
 
         console.log(`[FileControl] Am generat token-ul pentru ${fileName}. Trimit FORCE_DOWNLOAD prin WebSocket.`);

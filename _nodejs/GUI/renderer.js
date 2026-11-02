@@ -201,6 +201,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     saveServerBtn.addEventListener('click', async () => {
+        const lang = currentConfig.language || 'ro';
+        const dict = translations[lang] || translations['en'];
+
         currentConfig.serverPassword = passwordInput.value;
         currentConfig.autoStartup = autoStartupCheck.checked;
         currentConfig.autoPort = autoPortCheck.checked;

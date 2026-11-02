@@ -1,0 +1,6 @@
+node_modules/
+.expo/
+.vscode/
+build/
+package-lock.json
+*.log

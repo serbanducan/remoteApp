@@ -6,11 +6,15 @@ import WebSocketService from '../../WebSocket';
 import FileList from './FileList';
 import { startHttpDownload } from './FileDownload';
 import { File, Paths } from 'expo-file-system';
+import * as FileSystem from 'expo-file-system';
 import { getComputerData } from '../../ComputerScreens/ComputerManager';
 import { showCustomAlert } from '../../CustomAlert';
 
 import { useTheme } from '../../../ThemeContext'; 
 import { useLanguage } from '../../../LanguageContext';
+
+import { Platform } from 'react-native';
+import { StorageAccessFramework } from 'expo-file-system';
 
 const { width } = Dimensions.get('window');
 
@@ -24,6 +28,7 @@ export default function FileScreen({ navigation }) {
   // State-uri noi pentru progres descărcare
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadStatus, setDownloadStatus] = useState('');
+  const [selectedDirectoryUri, setSelectedDirectoryUri] = useState(null);
 
   const { isDarkMode, themeColor, colors } = useTheme();
   const { t } = useLanguage(); 
@@ -38,7 +43,7 @@ export default function FileScreen({ navigation }) {
   useEffect(() => {
     WebSocketService.setFileDownloadListener(async (msg) => {
       if (msg && msg.action === 'FORCE_DOWNLOAD') {
-        const { token, fileName } = msg;
+        const { token, fileName, port } = msg;
         try {
           const computerData = await getComputerData();
           const serverIp = computerData?.selectedComputer?.ip;
@@ -48,10 +53,37 @@ export default function FileScreen({ navigation }) {
 
           setDownloadStatus(t('downloading') || 'Downloading...');
 
-          await startHttpDownload(serverIp, token, fileName);
+          const finalFile = await startHttpDownload(serverIp, port, token, fileName);
+
+          // Folosim Storage Access Framework (doar pe Android) pentru a salva fișierul decriptat
+          if (Platform.OS === 'android' && selectedDirectoryUri) {
+            try {
+              const newFileUri = await StorageAccessFramework.createFileAsync(
+                selectedDirectoryUri,
+                fileName,
+                'application/octet-stream' 
+              );
+
+              // Citim fișierul decriptat ca Base64
+              const fileData = await FileSystem.readAsStringAsync(finalFile.uri, {
+                encoding: FileSystem.EncodingType.Base64
+              });
+
+              // Îl scriem în locația publică aleasă
+              await StorageAccessFramework.writeAsStringAsync(newFileUri, fileData, {
+                encoding: FileSystem.EncodingType.Base64,
+              });
+
+              console.log("Fișier salvat cu succes în:", newFileUri);
+            } catch (safError) {
+              console.error("Eroare la mutarea fișierului prin SAF:", safError);
+              throw new Error("Nu s-a putut salva fișierul în folderul selectat.");
+            }
+          }
 
           setIsDownloading(false);
           setDownloadStatus('');
+          setSelectedDirectoryUri(null); // Resetăm folderul ales
 
           showCustomAlert(
             t('download_success_title') || 'Download Success',
@@ -59,8 +91,8 @@ export default function FileScreen({ navigation }) {
           );
         } catch (error) {
           setIsDownloading(false);
-          setDownloadProgress(0);
           setDownloadStatus('');
+          setSelectedDirectoryUri(null);
           showCustomAlert(
             t('download_error_title') || 'Download Error',
             error.message || 'An error occurred during download.'
@@ -69,7 +101,7 @@ export default function FileScreen({ navigation }) {
       }
     });
     return () => WebSocketService.setFileDownloadListener(null);
-  }, [t]);
+  }, [t, selectedDirectoryUri]); // Am adăugat selectedDirectoryUri la dependințe
 
   useEffect(() => {
     WebSocketService.sendCommand('FILE_SYSTEM', 'SHOW', { path: currentPath });
@@ -92,15 +124,30 @@ export default function FileScreen({ navigation }) {
 
   function onFile(fileName){
     setSelectedFileName(fileName);
-    setModalVisible(true); 
+    handleDownload(fileName); // Apelăm direct logica de download fără modal!
   }
 
-  function handleDownload() {
+  async function handleDownload(fileName) {
+    if (Platform.OS === 'android') {
+      try {
+        const permissions = await StorageAccessFramework.requestDirectoryPermissionsAsync();
+        if (permissions.granted) {
+          setSelectedDirectoryUri(permissions.directoryUri);
+        } else {
+          // Utilizatorul a anulat alegerea folderului, oprim descărcarea.
+          return;
+        }
+      } catch (e) {
+        console.error("Eroare la cererea permisiunilor SAF:", e);
+        // Fallback dacă SAF nu funcționează (ex. Android vechi sau setări stricte)
+      }
+    }
+
     setModalVisible(false); 
     setIsDownloading(true);
     setDownloadStatus(t('requesting_ticket') || 'Requesting ticket...');
 
-    let fullPath = currentPath.toString() + selectedFileName;
+    let fullPath = currentPath.toString() + fileName;
     WebSocketService.sendCommand('FILE_SYSTEM', 'REQUEST_DOWNLOAD', { path: fullPath });
   }
 

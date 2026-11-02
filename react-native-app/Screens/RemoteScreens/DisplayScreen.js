@@ -1,6 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { StyleSheet, Text, View, TouchableOpacity, Dimensions, StatusBar } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import { StyleSheet, Text, View, TouchableOpacity, Dimensions, StatusBar, ActivityIndicator } from 'react-native';import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect } from '@react-navigation/native';
 import { WebView } from 'react-native-webview';
 import WebSocketService from '../WebSocket';
@@ -19,36 +18,30 @@ export default function DisplayScreen({ navigation }) {
 
     // Tab-ul activ ('touch' sau 'keyboard')
     const [activeTab, setActiveTab] = useState('touch');
-    const [streamPort, setStreamPort] = useState(null);
 
-    // Determinăm IP-ul serverului din URL-ul WebSocket-ului activ
-    const getIPAddress = () => {
+    // Extragem IP-ul și Portul curent direct din instanța WebSocket
+    const getServerConnectionInfo = () => {
         const wsInst = WebSocketService.getInstance();
         if (wsInst.server && wsInst.server.url) {
-            const match = wsInst.server.url.match(/ws:\/\/([^:/]+)/);
-            return match ? match[1] : null;
+            const match = wsInst.server.url.match(/ws:\/\/([^:/]+):(\d+)/);
+            if (match) {
+                return { ip: match[1], port: match[2] };
+            }
         }
-        return null;
+        return { ip: null, port: null };
     };
 
-    const serverIp = getIPAddress();
+    const { ip: serverIp, port: streamPort } = getServerConnectionInfo();
     const sessionPassword = WebSocketService.getInstance().sessionPassword;
 
     useFocusEffect(
         useCallback(() => {
-            const handleStreamMessage = (msg) => {
-                if (msg.component === 'STREAM' && msg.action === 'CONFIG' && msg.port) {
-                    setStreamPort(msg.port);
-                }
-            };
-
-            WebSocketService.setStreamListener(handleStreamMessage);
+            // Trimitem doar comanda de pornire (fără să mai așteptăm CONFIG)
             WebSocketService.sendCommand('STREAM', 'START_STREAM', {});
 
             return () => {
                 WebSocketService.setStreamListener(null);
                 WebSocketService.sendCommand('STREAM', 'STOP_STREAM', {});
-                setStreamPort(null);
             };
         }, [])
     );
@@ -82,7 +75,6 @@ export default function DisplayScreen({ navigation }) {
       </head>
       <body>
           <img id="videoStream" src="" alt="Stream Video" />
-        </div>
 
         <script>
           const img = document.getElementById('videoStream');
@@ -161,12 +153,9 @@ export default function DisplayScreen({ navigation }) {
           updateTransform();
           }, { passive: false });
 
-          // Deschidem conexiunea WebSocket direct din webview folosind portul primit dinamic
-          const ws = new WebSocket(\`ws://\${serverIp}:\${streamPort}?type=stream\`);
-          ws.binaryType = 'arraybuffer'; // Crucial pentru a primi date pure
-
           let cryptoKey = null;
           let oldUrl = null;
+          let ws = null;
 
           // Derivăm cheia statică (256-bit) din parola sesiunii
           async function deriveKey() {
@@ -183,57 +172,64 @@ export default function DisplayScreen({ navigation }) {
                       false,
                       ['decrypt']
                   );
+                  
+                  startWebSocket();
               } catch (err) {
               }
           }
           deriveKey();
           
-          ws.onopen = function() {
-             ws.send(JSON.stringify({ component: 'STREAM', action: 'FRAME_ACK' }));
-          };
+          function startWebSocket() {
+              ws = new WebSocket(\`ws://${serverIp}:${streamPort}?type=stream\`);
+              ws.binaryType = 'arraybuffer'; // Crucial pentru a primi date pure
 
-          ws.onmessage = async function(event) {
-             try {
-                 if (typeof event.data === 'string') return;
-                 if (!cryptoKey) return;
+              ws.onopen = function() {
+                 ws.send(JSON.stringify({ component: 'STREAM', action: 'FRAME_ACK' }));
+              };
 
-                 // Extragem IV-ul și restul ca imagine criptată
-                 const iv = new Uint8Array(event.data, 0, 16);
-                 const encryptedData = new Uint8Array(event.data, 16);
+              ws.onmessage = async function(event) {
+                 try {
+                     if (typeof event.data === 'string') return;
+                     if (!cryptoKey) return;
 
-                 // Decriptăm accelerat hardware
-                 const decryptedBuffer = await window.crypto.subtle.decrypt(
-                     { name: 'AES-CTR', counter: iv, length: 64 },
-                     cryptoKey,
-                     encryptedData
-                 );
+                     // Extragem IV-ul și restul ca imagine criptată
+                     const iv = new Uint8Array(event.data, 0, 16);
+                     const encryptedData = new Uint8Array(event.data, 16);
 
-                 // Convertim bufferul decriptat într-un obiect Blob vizual
-                 const blob = new Blob([decryptedBuffer], { type: 'image/jpeg' });
-                 
-                 // Eliberăm memoria URL-ului precedent pentru a nu cauza memory leak-uri
-                 if (oldUrl) URL.revokeObjectURL(oldUrl);
-                 oldUrl = URL.createObjectURL(blob);
-                 
-                 img.src = oldUrl;
+                     // Decriptăm accelerat hardware
+                     const decryptedBuffer = await window.crypto.subtle.decrypt(
+                         { name: 'AES-CTR', counter: iv, length: 64 },
+                         cryptoKey,
+                         encryptedData
+                     );
 
-             } catch (e) {
-             }
-          };
+                     // Convertim bufferul decriptat într-un obiect Blob vizual
+                     const blob = new Blob([decryptedBuffer], { type: 'image/jpeg' });
+                     
+                     // Eliberăm memoria URL-ului precedent pentru a nu cauza memory leak-uri
+                     if (oldUrl) URL.revokeObjectURL(oldUrl);
+                     oldUrl = URL.createObjectURL(blob);
+                     
+                     img.src = oldUrl;
+
+                 } catch (e) {
+                 }
+              };
+
+              ws.onerror = function(error) {
+              };
+          }
 
           img.onload = function() {
-             if (ws.readyState === 1) { // OPEN
+             if (ws && ws.readyState === 1) { // OPEN
                 ws.send(JSON.stringify({ component: 'STREAM', action: 'FRAME_ACK' }));
              }
           };
 
           img.onerror = function() {
-             if (ws.readyState === 1) { // OPEN
+             if (ws && ws.readyState === 1) { // OPEN
                 ws.send(JSON.stringify({ component: 'STREAM', action: 'FRAME_ACK' }));
              }
-          };
-
-          ws.onerror = function(error) {
           };
         </script>
       </body>
@@ -265,16 +261,15 @@ export default function DisplayScreen({ navigation }) {
             <View style={[styles.videoFrameContainer, { borderColor: `${themeColor}40` }]}>
                 {serverIp ? (
                     <View style={styles.streamContainer}>
-                        {!streamPort ? (
-                            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-                                <ActivityIndicator size="large" color={themeColor} />
-                                <Text style={{ color: colors.subText, marginTop: 10 }}>Se obține portul...</Text>
-                            </View>
-                        ) : (
+                        {streamPort && (
                             <WebView 
                                 originWhitelist={['*']}
                                 source={{ html: htmlContent, baseUrl: 'http://localhost' }}
                                 style={styles.webview}
+                                javaScriptEnabled={true}
+                                domStorageEnabled={true}
+                                mediaPlaybackRequiresUserAction={false}
+                                androidHardwareAccelerationDisabled={false}
                                 scrollEnabled={false}
                                 showsVerticalScrollIndicator={false}
                                 showsHorizontalScrollIndicator={false}
@@ -341,7 +336,12 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         marginBottom: 15
     },
-    webview: { flex: 1, backgroundColor: 'transparent' },
+    streamContainer: { 
+        flex: 1, 
+        width: '100%', 
+        height: '100%'
+    },
+    webview: { flex: 1, backgroundColor: 'black', width: '100%', height: '100%' },
     loadingText: { fontSize: 16, opacity: 0.7, fontWeight: '500', alignSelf: 'center', marginTop: '20%' },
 
     // Tab-uri

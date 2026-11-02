@@ -20,6 +20,7 @@ _nodejs/out/
 _nodejs/release/
 _nodejs/config.json
 _nodejs/server_config.json
+_nodejs/test*
 
 # ========================================
 # Expo / React Native (react-native-app)
@@ -29,6 +30,7 @@ react-native-app/build/
 react-native-app/dist/
 react-native-app/Computers.json
 react-native-app/language_config.json
+react-native-app/settings_config.json
 react-native-app/web-build/
 
 # iOS & Android (Dacă vei genera folderele native)

@@ -164,19 +164,29 @@ function startWebSocketServer(serverPassword, portRequested = 0, onReady = null)
             const accepted = handleNewConnection(ws, req);
             if (!accepted) return;
 
-        let isAuthenticated = false;
-        const handshakeTimeout = setTimeout(() => {
-            if (!isAuthenticated) {
-                console.log("Handshake timeout: Client didn't authenticate in 5s.");
-                ws.close(4001, 'Unauthorized');
-            }
-        }, 5000);
+            const isStream = req.url && req.url.includes('?type=stream');
+            let isAuthenticated = false;
+            let handshakeTimeout = null;
 
-        ws.on('close', () => {
-            if (isAuthenticated && clientStatusCallback) {
-                clientStatusCallback(false);
+            if (!isStream) {
+                handshakeTimeout = setTimeout(() => {
+                    if (!isAuthenticated) {
+                        console.log("Handshake timeout: Client didn't authenticate in 5s.");
+                        ws.close(4001, 'Unauthorized');
+                    }
+                }, 5000);
+            } else {
+                isAuthenticated = true; // Stream-ul este implicit acceptat
             }
-        });
+
+            ws.on('close', () => {
+                if (isAuthenticated && !isStream && clientStatusCallback) {
+                    clientStatusCallback(false);
+                }
+                if (handshakeTimeout) {
+                    clearTimeout(handshakeTimeout);
+                }
+            });
 
         ws.on('message', (message) => {
             
@@ -186,6 +196,8 @@ function startWebSocketServer(serverPassword, portRequested = 0, onReady = null)
 
                     // WebView trimite ACK-uri necriptate pentru eficiență maximă
                     if (envelope.component === 'STREAM' && envelope.action === 'FRAME_ACK') {
+                        isAuthenticated = true;
+                        clearTimeout(handshakeTimeout);
                         identifyStreamScreen(envelope);
                         return;
                     }

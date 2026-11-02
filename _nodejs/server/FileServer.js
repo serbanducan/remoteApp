@@ -7,10 +7,11 @@ const TokenManager = require('./TokenManager');
 const { getStreamKey } = require('./sendMessage');
 
 let activeFileServer = null;
+let activeFileServerPort = 0;
 
 function startFileServer() {
     if (activeFileServer) {
-        console.log("FileServer rulează deja.");
+        console.log("FileServer rulează deja pe portul " + activeFileServerPort);
         return;
     }
 
@@ -101,10 +102,11 @@ function startFileServer() {
         }
     });
 
-    // Pornim serverul pe portul 8082
-    fileServer.listen(8082, '0.0.0.0', () => {
+    // Pornim serverul pe port dinamic (0)
+    fileServer.listen(0, '0.0.0.0', () => {
         activeFileServer = fileServer;
-        console.log('Serverul HTTP pentru descărcare fișiere rulează pe portul 8082');
+        activeFileServerPort = fileServer.address().port;
+        console.log('Serverul HTTP pentru descărcare fișiere rulează pe portul ' + activeFileServerPort);
     });
 }
 
@@ -112,8 +114,13 @@ function stopFileServer() {
     if (activeFileServer) {
         activeFileServer.close();
         activeFileServer = null;
+        activeFileServerPort = 0;
         console.log("Serverul HTTP pentru descărcare fișiere a fost oprit.");
     }
 }
 
-module.exports = { startFileServer, stopFileServer };
+function getFileServerPort() {
+    return activeFileServerPort;
+}
+
+module.exports = { startFileServer, stopFileServer, getFileServerPort };

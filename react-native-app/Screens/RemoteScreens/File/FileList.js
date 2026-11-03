@@ -61,4 +61,4 @@ const styles = StyleSheet.create({
     FolderIcon: { width: 30, height: 30, marginRight: 15 },
     FileIcon: { width: 25, height: 30, marginRight: 15 },
     IconText: { fontSize: 18, fontWeight: '500', letterSpacing: 0.5 }
-});
+}); 
